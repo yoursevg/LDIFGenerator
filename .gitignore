@@ -1,0 +1,25 @@
+.DS_Store
+.idea/
+
+# Local sample data and generated LDIF files.
+examples/
+*.ldif
+!schema.ldif
+
+# Frontend dependencies and local caches.
+frontend/node_modules/
+frontend/.vite/
+frontend/package.json.md5
+
+# Wails and local build outputs.
+build/bin/
+build/artifacts/
+build/*.dmg
+build/*.tar
+build/*.tar.gz
+dist/
+
+# Logs and temporary files.
+*.log
+tmp/
+temp/
