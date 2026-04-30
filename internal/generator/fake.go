@@ -46,9 +46,6 @@ func NewFakeRegistry() *FakeRegistry {
 	r.Register("description", generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
 		return []string{fmt.Sprintf("Generated %s entry %d for LDAP load testing", e.Type, e.Index+1)}, nil
 	}))
-	r.Register("userPassword", generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
-		return []string{fmt.Sprintf("{SSHA}fake%08x", e.Rand.Uint32())}, nil
-	}))
 	r.Register("entryUUID", uuidGenerator())
 	r.Register("objectGUID", binaryIDGenerator())
 	r.Register("objectSid", binaryIDGenerator())
@@ -116,6 +113,8 @@ func defaultValue(attr schema.AttributeType, e EntryContext) []string {
 			return []string{"FALSE"}
 		}
 		return []string{"TRUE"}
+	case isNumericString(attr):
+		return []string{numericString(e)}
 	case strings.Contains(name, "number") || strings.Contains(name, "count") || strings.Contains(syntax, "integer"):
 		return []string{fmt.Sprintf("%d", e.Rand.Intn(1000000))}
 	case strings.Contains(name, "dn"):
@@ -123,6 +122,19 @@ func defaultValue(attr schema.AttributeType, e EntryContext) []string {
 	default:
 		return []string{fmt.Sprintf("%s-%d-%04d", attr.PrimaryName(), e.Index+1, e.Rand.Intn(10000))}
 	}
+}
+
+func isNumericString(attr schema.AttributeType) bool {
+	const numericStringSyntaxOID = "1.3.6.1.4.1.1466.115.121.1.36"
+	syntax := strings.ToLower(attr.Syntax)
+	return strings.Contains(syntax, numericStringSyntaxOID) ||
+		strings.Contains(syntax, "numeric string") ||
+		strings.EqualFold(attr.Equality, "numericStringMatch") ||
+		strings.EqualFold(attr.Substr, "numericStringSubstringsMatch")
+}
+
+func numericString(e EntryContext) string {
+	return fmt.Sprintf("%03d %03d %04d", e.Rand.Intn(1000), e.Rand.Intn(1000), e.Rand.Intn(10000))
 }
 
 var fakeGivenNames = []string{"Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Jamie", "Avery"}

@@ -163,6 +163,9 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 		if schema.NormalizeName(name) == "objectclass" {
 			continue
 		}
+		if isReservedGeneratedAttribute(name) {
+			continue
+		}
 		attr, ok := g.schema.Attribute(name)
 		if !ok {
 			if cfg.StrictMode {
@@ -242,6 +245,9 @@ func mergeAttributes(groups ...[]string) []string {
 func chooseMay(may []string, cfg GeneratorConfig, rng *rand.Rand) []string {
 	var out []string
 	for _, name := range may {
+		if isReservedGeneratedAttribute(name) {
+			continue
+		}
 		if len(cfg.SelectedAttributes) > 0 && !cfg.SelectedAttributes[schema.NormalizeName(name)] {
 			continue
 		}
@@ -250,6 +256,15 @@ func chooseMay(may []string, cfg GeneratorConfig, rng *rand.Rand) []string {
 		}
 	}
 	return out
+}
+
+func isReservedGeneratedAttribute(name string) bool {
+	switch schema.NormalizeName(name) {
+	case "userpassword":
+		return true
+	default:
+		return false
+	}
 }
 
 func baseEntryContext(cfg GeneratorConfig, typ EntryType, index int, rel Relationships, rng *rand.Rand) EntryContext {
