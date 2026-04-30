@@ -1,6 +1,6 @@
 # LDIFGenerator
 
-Production-oriented MVP for generating large LDIF files for LDAP load testing. The backend is written in Go, writes records with a streaming `bufio.Writer`, parses LDAP schema LDIF, resolves `SUP` inheritance, validates `MUST`/`MAY`, and exposes a Wails + React UI.
+Production-oriented CLI for generating large LDIF files for LDAP load testing. It is written in Go, writes records with a streaming `bufio.Writer`, parses LDAP schema LDIF, resolves `SUP` inheritance, and validates `MUST`/`MAY`.
 
 ## Architecture
 
@@ -8,8 +8,8 @@ Production-oriented MVP for generating large LDIF files for LDAP load testing. T
 - `internal/ldif`: record model, LDIF encoder, line folding, base64 output, streaming writer.
 - `internal/generator`: config, fake data registry, record generator, tree plans, relationships.
 - `internal/validation`: DN and schema-aware record validation.
-- `internal/app`: GUI-facing service with load/generate/progress/cancel methods.
-- `frontend`: React/TypeScript Wails UI.
+- `cmd/ldifgenerator`: CLI entrypoint.
+- `cmd/schemaaudit`: helper CLI for inspecting parsed schema counts and warnings.
 
 The extension point for new fake data is `generator.AttributeGenerator`. Register a new generator in `NewFakeRegistry()` by attribute name or alias.
 
@@ -17,23 +17,6 @@ The extension point for new fake data is `generator.AttributeGenerator`. Registe
 
 ```bash
 go run ./cmd/ldifgenerator -schema /path/to/schema.ldif -config /path/to/config.json
-```
-
-## Run GUI
-
-```bash
-cd frontend
-npm install
-cd ..
-wails dev
-```
-
-For a production desktop build:
-
-```bash
-cd frontend && npm install && npm run build
-cd ..
-wails build
 ```
 
 ## Test
