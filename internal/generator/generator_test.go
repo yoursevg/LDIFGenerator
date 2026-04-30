@@ -44,6 +44,44 @@ func TestGeneratorStreamsRecords(t *testing.T) {
 	}
 }
 
+func TestGeneratorDoesNotDuplicateSingleValueManager(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 100
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{"manager": true}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	cfg.Relationships.ManagersPercent = 100
+	report, err := New(s).Generate(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Records == 0 {
+		t.Fatal("expected generated records")
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range strings.Split(string(data), "\n\n") {
+		if strings.Count(entry, "\nmanager: ") > 1 {
+			t.Fatalf("entry has duplicate manager values:\n%s", entry)
+		}
+	}
+}
+
 const testSchema = `
 attributeTypes: ( 2.5.4.0 NAME 'objectClass' )
 attributeTypes: ( 2.5.4.3 NAME 'cn' )
@@ -55,7 +93,7 @@ attributeTypes: ( 2.5.4.13 NAME 'description' )
 attributeTypes: ( 2.5.4.11 NAME 'ou' )
 attributeTypes: ( 2.5.4.31 NAME 'member' )
 attributeTypes: ( 1.2.840.113556.1.2.102 NAME 'memberOf' )
-attributeTypes: ( 0.9.2342.19200300.100.1.10 NAME 'manager' )
+attributeTypes: ( 0.9.2342.19200300.100.1.10 NAME 'manager' SINGLE-VALUE )
 objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
 objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP top STRUCTURAL MUST ou )
 objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager ) )

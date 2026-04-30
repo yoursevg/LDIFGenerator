@@ -179,7 +179,15 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 		}
 	}
 	for _, extra := range rel.ExtraAttributes[ec.DN] {
-		rec.Add(extra.Name, extra.Values...)
+		attr, ok := g.schema.Attribute(extra.Name)
+		if ok && recordHasAttribute(rec, attr) {
+			continue
+		}
+		values := extra.Values
+		if ok && attr.SingleValue && len(values) > 1 {
+			values = values[:1]
+		}
+		rec.Add(extra.Name, values...)
 	}
 	return rec, nil
 }
@@ -197,6 +205,22 @@ func addGeneratedValues(rec *ldif.Record, name string, values []string) {
 		text = append(text, value)
 	}
 	rec.Add(name, text...)
+}
+
+func recordHasAttribute(rec ldif.Record, attr schema.AttributeType) bool {
+	keys := map[string]bool{}
+	for _, name := range attr.Names {
+		keys[schema.NormalizeName(name)] = true
+	}
+	if attr.OID != "" {
+		keys[schema.NormalizeName(attr.OID)] = true
+	}
+	for _, existing := range rec.Attributes {
+		if keys[schema.NormalizeName(existing.Name)] {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeAttributes(groups ...[]string) []string {
