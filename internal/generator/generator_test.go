@@ -104,6 +104,39 @@ func TestBuildPlanWritesGroupsAfterMemberEntries(t *testing.T) {
 	}
 }
 
+func TestNestedGroupsReferenceEarlierGroupRecords(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Count = 100
+	cfg.Tree.GroupPercent = 30
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	cfg.Relationships.NestedGroupsPercent = 100
+	rng := rand.New(rand.NewSource(1))
+	plan := BuildPlan(cfg, rng)
+	rel := BuildRelationships(cfg, plan, rng)
+	groupOrder := map[string]int{}
+	for i, typ := range plan {
+		if typ != EntryTypeGroup {
+			continue
+		}
+		ec := baseEntryContext(cfg, typ, i, Relationships{}, rand.New(rand.NewSource(2)))
+		groupOrder[ec.DN] = i
+	}
+	for parent, members := range rel.GroupMembers {
+		parentIndex, ok := groupOrder[parent]
+		if !ok {
+			continue
+		}
+		for _, member := range members {
+			memberIndex, ok := groupOrder[member]
+			if ok && memberIndex > parentIndex {
+				t.Fatalf("nested group parent %q at %d references later group %q at %d", parent, parentIndex, member, memberIndex)
+			}
+		}
+	}
+}
+
 func TestGeneratorSkipsUserPassword(t *testing.T) {
 	s, err := schema.Parse(strings.NewReader(testSchema))
 	if err != nil {
@@ -173,6 +206,44 @@ func TestGeneratorUsesNumericStringSyntax(t *testing.T) {
 	}
 }
 
+func TestGeneratorUsesPostalAddressSyntax(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 20
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{"homepostaladdress": true}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`(?m)^homePostalAddress: ([[:print:]]+)$`)
+	matches := re.FindAllStringSubmatch(string(data), -1)
+	if len(matches) == 0 {
+		t.Fatalf("generated LDIF missing homePostalAddress:\n%s", string(data))
+	}
+	for _, match := range matches {
+		if strings.Count(match[1], "$") != 2 {
+			t.Fatalf("homePostalAddress is not postal-address formatted: %q", match[0])
+		}
+	}
+}
+
 const testSchema = `
 attributeTypes: ( 2.5.4.0 NAME 'objectClass' )
 attributeTypes: ( 2.5.4.3 NAME 'cn' )
@@ -185,11 +256,12 @@ attributeTypes: ( 2.5.4.11 NAME 'ou' )
 attributeTypes: ( 2.5.4.31 NAME 'member' )
 attributeTypes: ( 2.5.4.35 NAME 'userPassword' )
 attributeTypes: ( 2.5.4.24 NAME 'x121Address' EQUALITY numericStringMatch SUBSTR numericStringSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.36 )
+attributeTypes: ( 0.9.2342.19200300.100.1.39 NAME 'homePostalAddress' SYNTAX 1.3.6.1.4.1.1466.115.121.1.41 )
 attributeTypes: ( 1.2.840.113556.1.2.102 NAME 'memberOf' )
 attributeTypes: ( 0.9.2342.19200300.100.1.10 NAME 'manager' SINGLE-VALUE )
 objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
 objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP top STRUCTURAL MUST ou )
-objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address ) )
+objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address $ homePostalAddress ) )
 objectClasses: ( 1.2.643.4.38.2.2.1 NAME 'privUser' SUP inetOrgPerson STRUCTURAL MAY description )
 objectClasses: ( 2.5.6.9 NAME 'groupOfNames' SUP top STRUCTURAL MUST ( cn $ member ) MAY description )
 objectClasses: ( 2.5.6.14 NAME 'device' SUP top STRUCTURAL MUST cn MAY description )

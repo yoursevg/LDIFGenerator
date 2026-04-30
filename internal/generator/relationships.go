@@ -86,14 +86,13 @@ func BuildRelationships(cfg GeneratorConfig, plan []EntryType, rng *rand.Rand) R
 			rel.UserGroups[userDN] = append(rel.UserGroups[userDN], groupDN)
 		}
 	}
-	for _, groupDN := range groups {
-		if len(groups) < 2 || rng.Intn(100) >= cfg.Relationships.NestedGroupsPercent {
+	for i, groupDN := range groups {
+		if i == len(groups)-1 || rng.Intn(100) >= cfg.Relationships.NestedGroupsPercent {
 			continue
 		}
-		parent := groups[rng.Intn(len(groups))]
-		if parent == groupDN {
-			continue
-		}
+		// Parent groups are chosen after the child in generation order so ldapadd
+		// can add nested groups without referencing a later group DN.
+		parent := groups[i+1+rng.Intn(len(groups)-i-1)]
 		rel.GroupMembers[parent] = append(rel.GroupMembers[parent], groupDN)
 	}
 	for _, userDN := range managedUsers {
