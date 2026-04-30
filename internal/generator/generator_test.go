@@ -2,6 +2,7 @@ package generator
 
 import (
 	"context"
+	"math/rand"
 	"os"
 	"strings"
 	"testing"
@@ -78,6 +79,26 @@ func TestGeneratorDoesNotDuplicateSingleValueManager(t *testing.T) {
 	for _, entry := range strings.Split(string(data), "\n\n") {
 		if strings.Count(entry, "\nmanager: ") > 1 {
 			t.Fatalf("entry has duplicate manager values:\n%s", entry)
+		}
+	}
+}
+
+func TestBuildPlanWritesGroupsAfterMemberEntries(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Count = 100
+	cfg.Tree.GroupPercent = 20
+	cfg.Tree.ComputerPercent = 10
+	cfg.Tree.ServicePercent = 10
+	cfg.Tree.PrivilegedPercent = 10
+	plan := BuildPlan(cfg, rand.New(rand.NewSource(1)))
+	seenGroup := false
+	for _, typ := range plan {
+		if typ == EntryTypeGroup {
+			seenGroup = true
+			continue
+		}
+		if seenGroup {
+			t.Fatalf("non-group entry %q generated after first group in plan: %#v", typ, plan)
 		}
 	}
 }

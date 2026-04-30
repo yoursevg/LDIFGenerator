@@ -23,9 +23,6 @@ func BuildPlan(cfg GeneratorConfig, rng *rand.Rand) []EntryType {
 	if users < 0 {
 		users = 0
 	}
-	for i := 0; i < groups; i++ {
-		plan = append(plan, EntryTypeGroup)
-	}
 	for i := 0; i < computers; i++ {
 		plan = append(plan, EntryTypeComputer)
 	}
@@ -38,8 +35,15 @@ func BuildPlan(cfg GeneratorConfig, rng *rand.Rand) []EntryType {
 	for i := 0; i < users; i++ {
 		plan = append(plan, EntryTypeUser)
 	}
-	rng.Shuffle(len(plan), func(i, j int) { plan[i], plan[j] = plan[j], plan[i] })
+	shuffleEntryTypes(plan[:computers+services+privileged+users], rng)
+	for i := 0; i < groups; i++ {
+		plan = append(plan, EntryTypeGroup)
+	}
 	return plan
+}
+
+func shuffleEntryTypes(types []EntryType, rng *rand.Rand) {
+	rng.Shuffle(len(types), func(i, j int) { types[i], types[j] = types[j], types[i] })
 }
 
 func BuildRelationships(cfg GeneratorConfig, plan []EntryType, rng *rand.Rand) Relationships {
