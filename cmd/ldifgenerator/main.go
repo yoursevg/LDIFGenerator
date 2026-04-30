@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	schemaPath := flag.String("schema", "", "comma-separated schema LDIF files")
+	schemaPath := flag.String("schema", "", "comma-separated schema LDIF files or directories")
 	configPath := flag.String("config", "", "generation config JSON")
 	flag.Parse()
 	if *schemaPath == "" || *configPath == "" {
@@ -21,7 +21,10 @@ func main() {
 		os.Exit(2)
 	}
 
-	paths := splitCSV(*schemaPath)
+	paths, err := schema.ResolveInputPaths(splitCSV(*schemaPath))
+	if err != nil {
+		log.Fatal(err)
+	}
 	s, err := schema.ParseFiles(paths)
 	if err != nil {
 		log.Fatal(err)

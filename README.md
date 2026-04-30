@@ -19,6 +19,8 @@ The extension point for new fake data is `generator.AttributeGenerator`. Registe
 go run ./cmd/ldifgenerator -schema /path/to/schema.ldif -config /path/to/config.json
 ```
 
+`-schema` accepts a comma-separated list of schema files and/or directories. Directories are scanned recursively for `.ldif`, `.schema`, and `.conf` files, then parsed in deterministic path order.
+
 ## Test
 
 ```bash

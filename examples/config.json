@@ -1,0 +1,36 @@
+{
+  "baseDN": "dc=example,dc=com",
+  "count": 100000,
+  "seed": 42,
+  "batchSize": 1000,
+  "outputPath": "generated.ldif",
+  "strictMode": true,
+  "optionalFillPercent": 45,
+  "selectedAttributes": {},
+  "objectClasses": {
+    "user": ["inetOrgPerson"],
+    "privilegedUser": ["privUser"],
+    "group": ["groupOfNames"],
+    "computer": ["computer"],
+    "serviceAccount": ["serviceUser"]
+  },
+  "tree": {
+    "mode": "hierarchical",
+    "userOU": "Users",
+    "privilegedOU": "PrivilegedUsers",
+    "groupOU": "Groups",
+    "computerOU": "Computers",
+    "serviceOU": "ServiceAccounts",
+    "privilegedPercent": 3,
+    "groupPercent": 5,
+    "computerPercent": 5,
+    "servicePercent": 2
+  },
+  "relationships": {
+    "usersInGroupsPercent": 70,
+    "nestedGroupsPercent": 10,
+    "managersPercent": 15,
+    "maxMembersPerGroup": 200
+  }
+}
+

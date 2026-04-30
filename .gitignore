@@ -2,9 +2,11 @@
 .idea/
 
 # Local sample data and generated LDIF files.
-examples/
 *.ldif
 !schema.ldif
+examples/*
+!examples/
+!examples/config.json
 
 # Build outputs.
 build/

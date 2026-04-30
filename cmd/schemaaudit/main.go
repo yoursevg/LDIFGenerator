@@ -11,10 +11,14 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: schemaaudit <schema.ldif>")
+	if len(os.Args) < 2 {
+		log.Fatal("usage: schemaaudit <schema-file-or-dir> [schema-file-or-dir...]")
 	}
-	s, err := schema.ParseFiles([]string{os.Args[1]})
+	paths, err := schema.ResolveInputPaths(os.Args[1:])
+	if err != nil {
+		log.Fatal(err)
+	}
+	s, err := schema.ParseFiles(paths)
 	if err != nil {
 		log.Fatal(err)
 	}
