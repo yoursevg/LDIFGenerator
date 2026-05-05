@@ -28,9 +28,9 @@
   },
   "relationships": {
     "usersInGroupsPercent": 70,
+    "allUsersGroupCount": 0,
     "nestedGroupsPercent": 10,
     "managersPercent": 15,
     "maxMembersPerGroup": 200
   }
 }
-

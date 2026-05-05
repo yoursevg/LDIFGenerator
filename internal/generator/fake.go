@@ -64,6 +64,9 @@ func NewFakeRegistry() *FakeRegistry {
 	r.Register("member", generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
 		return e.Related.GroupMembers[e.DN], nil
 	}))
+	r.Register("uniqueMember", generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
+		return e.Related.GroupMembers[e.DN], nil
+	}))
 	r.Register("memberOf", generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
 		return e.Related.UserGroups[e.DN], nil
 	}))

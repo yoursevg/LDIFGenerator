@@ -137,6 +137,85 @@ func TestNestedGroupsReferenceEarlierGroupRecords(t *testing.T) {
 	}
 }
 
+func TestAllUsersGroupCountAddsHumanUsersToLeadingGroups(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Count = 100
+	cfg.Tree.GroupPercent = 10
+	cfg.Tree.ComputerPercent = 10
+	cfg.Tree.ServicePercent = 10
+	cfg.Tree.PrivilegedPercent = 10
+	cfg.Relationships.UsersInGroupsPercent = 0
+	cfg.Relationships.AllUsersGroupCount = 2
+	rng := rand.New(rand.NewSource(1))
+	plan := BuildPlan(cfg, rng)
+	rel := BuildRelationships(cfg, plan, rng)
+	var groups, humanUsers, computersAndServices []string
+	for i, typ := range plan {
+		ec := baseEntryContext(cfg, typ, i, Relationships{}, rand.New(rand.NewSource(2)))
+		switch typ {
+		case EntryTypeGroup:
+			groups = append(groups, ec.DN)
+		case EntryTypeUser, EntryTypePrivileged:
+			humanUsers = append(humanUsers, ec.DN)
+		case EntryTypeComputer, EntryTypeService:
+			computersAndServices = append(computersAndServices, ec.DN)
+		}
+	}
+	if len(groups) < 2 || len(humanUsers) == 0 {
+		t.Fatalf("test plan missing groups or users: groups=%d users=%d", len(groups), len(humanUsers))
+	}
+	for _, groupDN := range groups[:2] {
+		for _, userDN := range humanUsers {
+			if !containsDN(rel.GroupMembers[groupDN], userDN) {
+				t.Fatalf("group %q is missing user %q", groupDN, userDN)
+			}
+			if !containsDN(rel.UserGroups[userDN], groupDN) {
+				t.Fatalf("user %q is missing memberOf %q", userDN, groupDN)
+			}
+		}
+		for _, dn := range computersAndServices {
+			if containsDN(rel.GroupMembers[groupDN], dn) {
+				t.Fatalf("all-users group %q unexpectedly contains non-human entry %q", groupDN, dn)
+			}
+		}
+	}
+}
+
+func TestGeneratorWritesForcedGroupMembersWhenMemberIsMay(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 50
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 0
+	cfg.Tree.GroupPercent = 10
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 10
+	cfg.Relationships.UsersInGroupsPercent = 0
+	cfg.Relationships.AllUsersGroupCount = 1
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := strings.Split(string(data), "\n\n")
+	for _, entry := range entries {
+		if strings.Contains(entry, "objectClass: groupOfNames") && !strings.Contains(entry, "\nmember: ") {
+			t.Fatalf("group entry missing forced member values:\n%s", entry)
+		}
+	}
+}
+
 func TestGeneratorSkipsUserPassword(t *testing.T) {
 	s, err := schema.Parse(strings.NewReader(testSchema))
 	if err != nil {
@@ -263,7 +342,7 @@ objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
 objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP top STRUCTURAL MUST ou )
 objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address $ homePostalAddress ) )
 objectClasses: ( 1.2.643.4.38.2.2.1 NAME 'privUser' SUP inetOrgPerson STRUCTURAL MAY description )
-objectClasses: ( 2.5.6.9 NAME 'groupOfNames' SUP top STRUCTURAL MUST ( cn $ member ) MAY description )
+objectClasses: ( 2.5.6.9 NAME 'groupOfNames' SUP top STRUCTURAL MUST cn MAY ( member $ description ) )
 objectClasses: ( 2.5.6.14 NAME 'device' SUP top STRUCTURAL MUST cn MAY description )
 objectClasses: ( 0.9.2342.19200300.100.4.5 NAME 'account' SUP top STRUCTURAL MUST uid MAY description )
 objectClasses: ( 1.2.643.4.38.2.2.2 NAME 'serviceUser' SUP inetOrgPerson STRUCTURAL MAY description )

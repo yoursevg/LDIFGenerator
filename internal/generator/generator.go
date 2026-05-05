@@ -181,6 +181,7 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 			addGeneratedValues(&rec, attr.PrimaryName(), values)
 		}
 	}
+	g.addRelationshipAttributes(&rec, resolved, ec)
 	for _, extra := range rel.ExtraAttributes[ec.DN] {
 		attr, ok := g.schema.Attribute(extra.Name)
 		if ok && recordHasAttribute(rec, attr) {
@@ -193,6 +194,36 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 		rec.Add(extra.Name, values...)
 	}
 	return rec, nil
+}
+
+func (g *Generator) addRelationshipAttributes(rec *ldif.Record, resolved schema.ResolvedObjectClass, ec EntryContext) {
+	if members := ec.Related.GroupMembers[ec.DN]; len(members) > 0 {
+		g.addAllowedValues(rec, resolved, []string{"member", "uniqueMember"}, members)
+	}
+	if groups := ec.Related.UserGroups[ec.DN]; len(groups) > 0 {
+		g.addAllowedValues(rec, resolved, []string{"memberOf"}, groups)
+	}
+}
+
+func (g *Generator) addAllowedValues(rec *ldif.Record, resolved schema.ResolvedObjectClass, candidates []string, values []string) {
+	for _, name := range candidates {
+		if !resolvedAllowsAttribute(resolved, name) {
+			continue
+		}
+		attr, ok := g.schema.Attribute(name)
+		if ok && recordHasAttribute(*rec, attr) {
+			return
+		}
+		if ok {
+			if attr.SingleValue && len(values) > 1 {
+				values = values[:1]
+			}
+			rec.Add(attr.PrimaryName(), values...)
+			return
+		}
+		rec.Add(name, values...)
+		return
+	}
 }
 
 func addGeneratedValues(rec *ldif.Record, name string, values []string) {
@@ -208,6 +239,21 @@ func addGeneratedValues(rec *ldif.Record, name string, values []string) {
 		text = append(text, value)
 	}
 	rec.Add(name, text...)
+}
+
+func resolvedAllowsAttribute(resolved schema.ResolvedObjectClass, name string) bool {
+	key := schema.NormalizeName(name)
+	for _, attr := range resolved.Must {
+		if schema.NormalizeName(attr) == key {
+			return true
+		}
+	}
+	for _, attr := range resolved.May {
+		if schema.NormalizeName(attr) == key {
+			return true
+		}
+	}
+	return false
 }
 
 func recordHasAttribute(rec ldif.Record, attr schema.AttributeType) bool {

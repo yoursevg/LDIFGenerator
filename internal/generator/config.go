@@ -49,6 +49,7 @@ type TreeConfig struct {
 
 type RelationshipConfig struct {
 	UsersInGroupsPercent int `json:"usersInGroupsPercent"`
+	AllUsersGroupCount   int `json:"allUsersGroupCount"`
 	NestedGroupsPercent  int `json:"nestedGroupsPercent"`
 	ManagersPercent      int `json:"managersPercent"`
 	MaxMembersPerGroup   int `json:"maxMembersPerGroup"`
@@ -96,6 +97,7 @@ func DefaultConfig() GeneratorConfig {
 		},
 		Relationships: RelationshipConfig{
 			UsersInGroupsPercent: 70,
+			AllUsersGroupCount:   0,
 			NestedGroupsPercent:  10,
 			ManagersPercent:      15,
 			MaxMembersPerGroup:   200,

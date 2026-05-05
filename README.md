@@ -10,8 +10,10 @@ Production-oriented CLI for generating large LDIF files for LDAP load testing. I
 - `internal/ldapimport`: LDIF chunking and phased `ldapadd` runner.
 - `internal/validation`: DN and schema-aware record validation.
 - `cmd/ldifgenerator`: CLI entrypoint.
+- `cmd/ldifgenerator-ui`: local HTTP backend for the browser UI.
 - `cmd/ldapbulkadd`: helper CLI for concurrent phased imports through `ldapadd`.
 - `cmd/schemaaudit`: helper CLI for inspecting parsed schema counts and warnings.
+- `frontend`: React/Vite UI that talks to the local HTTP backend.
 
 The extension point for new fake data is `generator.AttributeGenerator`. Register a new generator in `NewFakeRegistry()` by attribute name or alias.
 
@@ -22,6 +24,33 @@ go run ./cmd/ldifgenerator -schema /path/to/schema.ldif -config /path/to/config.
 ```
 
 `-schema` accepts a comma-separated list of schema files and/or directories. Directories are scanned recursively for `.ldif`, `.schema`, and `.conf` files, then parsed in deterministic path order.
+
+## Run UI
+
+Run the Go backend:
+
+```bash
+go run ./cmd/ldifgenerator-ui
+```
+
+Run the frontend in another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the Vite URL shown in the terminal. The frontend proxies `/api` to `http://127.0.0.1:8080`.
+
+For a built UI:
+
+```bash
+cd frontend
+npm run build
+cd ..
+go run ./cmd/ldifgenerator-ui -static frontend/dist
+```
 
 ## Concurrent ldapadd
 
@@ -56,6 +85,7 @@ go test ./...
 - Writes LDIF streaming to disk.
 - Uses `privUser` for privileged users and `serviceUser` for service accounts by default.
 - Generates group `member`, user `memberOf`, nested groups and manager links.
+- Supports `relationships.allUsersGroupCount` for adding all regular and privileged users to the first N generated groups.
 - Generates fallback values from LDAP attribute syntax OIDs where possible, including Numeric String, Postal Address, DN, Boolean, Integer, Generalized Time, Telephone Number, IA5/Directory String and common binary syntaxes.
 - Supports deterministic seed, batch progress, cancellation and a generation report.
 - Validates required/allowed attributes in strict mode.

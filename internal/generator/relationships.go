@@ -48,7 +48,7 @@ func shuffleEntryTypes(types []EntryType, rng *rand.Rand) {
 
 func BuildRelationships(cfg GeneratorConfig, plan []EntryType, rng *rand.Rand) Relationships {
 	rel := Relationships{GroupMembers: map[string][]string{}, UserGroups: map[string][]string{}, ExtraAttributes: map[string][]AttributeAssignment{}}
-	var users, managedUsers, groups []string
+	var users, humanUsers, managedUsers, groups []string
 	for i, typ := range plan {
 		ec := baseEntryContext(cfg, typ, i, rel, rng)
 		if typ == EntryTypeGroup {
@@ -58,11 +58,17 @@ func BuildRelationships(cfg GeneratorConfig, plan []EntryType, rng *rand.Rand) R
 			users = append(users, ec.DN)
 		}
 		if typ == EntryTypeUser || typ == EntryTypePrivileged {
+			humanUsers = append(humanUsers, ec.DN)
 			managedUsers = append(managedUsers, ec.DN)
 		}
 	}
 	if len(groups) == 0 || len(users) == 0 {
 		return rel
+	}
+	for _, groupDN := range firstGroups(groups, cfg.Relationships.AllUsersGroupCount) {
+		for _, userDN := range humanUsers {
+			addGroupMember(rel, groupDN, userDN)
+		}
 	}
 	maxMembers := cfg.Relationships.MaxMembersPerGroup
 	if maxMembers <= 0 {
@@ -76,14 +82,12 @@ func BuildRelationships(cfg GeneratorConfig, plan []EntryType, rng *rand.Rand) R
 		if len(rel.GroupMembers[groupDN]) >= maxMembers {
 			continue
 		}
-		rel.GroupMembers[groupDN] = append(rel.GroupMembers[groupDN], userDN)
-		rel.UserGroups[userDN] = append(rel.UserGroups[userDN], groupDN)
+		addGroupMember(rel, groupDN, userDN)
 	}
 	for _, groupDN := range groups {
 		if len(rel.GroupMembers[groupDN]) == 0 {
 			userDN := users[rng.Intn(len(users))]
-			rel.GroupMembers[groupDN] = append(rel.GroupMembers[groupDN], userDN)
-			rel.UserGroups[userDN] = append(rel.UserGroups[userDN], groupDN)
+			addGroupMember(rel, groupDN, userDN)
 		}
 	}
 	for i, groupDN := range groups {
@@ -116,4 +120,33 @@ func percentCount(total, percent int) int {
 		percent = 100
 	}
 	return total * percent / 100
+}
+
+func firstGroups(groups []string, count int) []string {
+	if count <= 0 || len(groups) == 0 {
+		return nil
+	}
+	if count > len(groups) {
+		count = len(groups)
+	}
+	return groups[:count]
+}
+
+func addGroupMember(rel Relationships, groupDN, memberDN string) {
+	if containsDN(rel.GroupMembers[groupDN], memberDN) {
+		return
+	}
+	rel.GroupMembers[groupDN] = append(rel.GroupMembers[groupDN], memberDN)
+	if !containsDN(rel.UserGroups[memberDN], groupDN) {
+		rel.UserGroups[memberDN] = append(rel.UserGroups[memberDN], groupDN)
+	}
+}
+
+func containsDN(values []string, dn string) bool {
+	for _, value := range values {
+		if value == dn {
+			return true
+		}
+	}
+	return false
 }
