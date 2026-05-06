@@ -216,6 +216,42 @@ func TestGeneratorWritesForcedGroupMembersWhenMemberIsMay(t *testing.T) {
 	}
 }
 
+func TestGeneratorSkipsNoUserModificationAttributes(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 20
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{"name": true, "memberOf": true}
+	cfg.Tree.GroupPercent = 10
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	cfg.Relationships.UsersInGroupsPercent = 100
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, "\nname: ") {
+		t.Fatalf("generated LDIF contains NO-USER-MODIFICATION name attribute:\n%s", text)
+	}
+	if strings.Contains(text, "\nmemberOf: ") {
+		t.Fatalf("generated LDIF contains NO-USER-MODIFICATION memberOf attribute:\n%s", text)
+	}
+}
+
 func TestGeneratorSkipsUserPassword(t *testing.T) {
 	s, err := schema.Parse(strings.NewReader(testSchema))
 	if err != nil {
@@ -329,6 +365,7 @@ attributeTypes: ( 2.5.4.3 NAME 'cn' )
 attributeTypes: ( 2.5.4.4 NAME 'sn' )
 attributeTypes: ( 0.9.2342.19200300.100.1.1 NAME 'uid' )
 attributeTypes: ( 0.9.2342.19200300.100.1.3 NAME 'mail' )
+attributeTypes: ( 2.5.4.41 NAME 'name' NO-USER-MODIFICATION )
 attributeTypes: ( 2.5.4.42 NAME 'givenName' )
 attributeTypes: ( 2.5.4.13 NAME 'description' )
 attributeTypes: ( 2.5.4.11 NAME 'ou' )
@@ -336,11 +373,11 @@ attributeTypes: ( 2.5.4.31 NAME 'member' )
 attributeTypes: ( 2.5.4.35 NAME 'userPassword' )
 attributeTypes: ( 2.5.4.24 NAME 'x121Address' EQUALITY numericStringMatch SUBSTR numericStringSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.36 )
 attributeTypes: ( 0.9.2342.19200300.100.1.39 NAME 'homePostalAddress' SYNTAX 1.3.6.1.4.1.1466.115.121.1.41 )
-attributeTypes: ( 1.2.840.113556.1.2.102 NAME 'memberOf' )
+attributeTypes: ( 1.2.840.113556.1.2.102 NAME 'memberOf' NO-USER-MODIFICATION )
 attributeTypes: ( 0.9.2342.19200300.100.1.10 NAME 'manager' SINGLE-VALUE )
 objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
 objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP top STRUCTURAL MUST ou )
-objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address $ homePostalAddress ) )
+objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address $ homePostalAddress $ name ) )
 objectClasses: ( 1.2.643.4.38.2.2.1 NAME 'privUser' SUP inetOrgPerson STRUCTURAL MAY description )
 objectClasses: ( 2.5.6.9 NAME 'groupOfNames' SUP top STRUCTURAL MUST cn MAY ( member $ description ) )
 objectClasses: ( 2.5.6.14 NAME 'device' SUP top STRUCTURAL MUST cn MAY description )

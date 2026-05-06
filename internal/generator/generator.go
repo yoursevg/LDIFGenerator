@@ -173,6 +173,9 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 			}
 			attr = schema.AttributeType{Names: []string{name}}
 		}
+		if attr.NoUserMod {
+			continue
+		}
 		values, err := g.fakes.Generate(ctx, attr, ec)
 		if err != nil {
 			return rec, err
@@ -185,6 +188,9 @@ func (g *Generator) buildRecord(ctx context.Context, cfg GeneratorConfig, typ En
 	for _, extra := range rel.ExtraAttributes[ec.DN] {
 		attr, ok := g.schema.Attribute(extra.Name)
 		if ok && recordHasAttribute(rec, attr) {
+			continue
+		}
+		if ok && attr.NoUserMod {
 			continue
 		}
 		values := extra.Values
@@ -211,6 +217,9 @@ func (g *Generator) addAllowedValues(rec *ldif.Record, resolved schema.ResolvedO
 			continue
 		}
 		attr, ok := g.schema.Attribute(name)
+		if ok && attr.NoUserMod {
+			continue
+		}
 		if ok && recordHasAttribute(*rec, attr) {
 			return
 		}
