@@ -1,39 +1,68 @@
 # LDIFGenerator
 
-Production-oriented CLI for generating large LDIF files for LDAP load testing. It is written in Go, writes records with a streaming `bufio.Writer`, parses LDAP schema LDIF, resolves `SUP` inheritance, and validates `MUST`/`MAY`.
+Генератор больших LDIF-файлов для нагрузочного тестирования LDAP-сервера.
 
-## Architecture
+Что умеет:
 
-- `internal/schema`: LDIF schema parser, model, aliases, multiline unfolding, `SUP` resolver.
-- `internal/ldif`: record model, LDIF encoder, line folding, base64 output, streaming writer.
-- `internal/generator`: config, fake data registry, record generator, tree plans, relationships.
-- `internal/ldapimport`: LDIF chunking and phased `ldapadd` runner.
-- `internal/validation`: DN and schema-aware record validation.
-- `cmd/ldifgenerator`: CLI entrypoint.
-- `cmd/ldifgenerator-ui`: local HTTP backend for the browser UI.
-- `cmd/ldapbulkadd`: helper CLI for concurrent phased imports through `ldapadd`.
-- `cmd/schemaaudit`: helper CLI for inspecting parsed schema counts and warnings.
-- `frontend`: React/Vite UI that talks to the local HTTP backend.
+- читает LDAP schema из `.ldif`, `.schema`, `.conf`;
+- принимает один файл, несколько файлов или папку со схемами;
+- парсит `attributeTypes` и `objectClasses`;
+- учитывает `SUP`, `MUST`, `MAY`, aliases и folded LDIF values;
+- генерирует users, privileged users, groups, computers, service accounts;
+- пишет LDIF streaming-подходом, без хранения всех записей в памяти;
+- валидирует записи перед записью в файл;
+- умеет дробить LDIF и запускать конкурентный `ldapadd`.
 
-The extension point for new fake data is `generator.AttributeGenerator`. Register a new generator in `NewFakeRegistry()` by attribute name or alias.
+## Быстрый старт
 
-## Run CLI
+Сгенерировать LDIF по папке со схемами:
 
 ```bash
-go run ./cmd/ldifgenerator -schema /path/to/schema.ldif -config /path/to/config.json
+go run ./cmd/ldifgenerator \
+  -schema /path/to/schema-dir \
+  -config examples/config.json
 ```
 
-`-schema` accepts a comma-separated list of schema files and/or directories. Directories are scanned recursively for `.ldif`, `.schema`, and `.conf` files, then parsed in deterministic path order.
+Сгенерировать LDIF по нескольким файлам схемы:
 
-## Run UI
+```bash
+go run ./cmd/ldifgenerator \
+  -schema /path/to/core.ldif,/path/to/custom.ldif \
+  -config examples/config.json
+```
 
-Run the Go backend:
+Результат будет записан в файл из `outputPath` в config JSON.
+
+## Config
+
+Минимальный рабочий config лежит здесь:
+
+```bash
+examples/config.json
+```
+
+Основные поля:
+
+- `baseDN`: корневой DN, например `dc=example,dc=com`;
+- `count`: сколько записей генерировать;
+- `outputPath`: куда писать LDIF;
+- `objectClasses`: objectClass для users/groups/computers/service accounts;
+- `tree`: структура OU и проценты типов записей;
+- `relationships`: группы, nested groups, managers;
+- `optionalFillPercent`: процент заполнения MAY-атрибутов;
+- `selectedAttributes`: ограничение MAY-атрибутов, если нужно.
+
+`MUST`-атрибуты генерируются всегда. Если обязательный атрибут нельзя сгенерировать, генерация завершится ошибкой.
+
+## UI
+
+Запустить backend:
 
 ```bash
 go run ./cmd/ldifgenerator-ui
 ```
 
-Run the frontend in another terminal:
+Запустить frontend:
 
 ```bash
 cd frontend
@@ -41,55 +70,111 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal. The frontend proxies `/api` to `http://127.0.0.1:8080`.
+Открыть URL, который покажет Vite. Обычно это:
 
-For a built UI:
+```text
+http://localhost:5173
+```
+
+Собранный UI:
 
 ```bash
 cd frontend
+npm install
 npm run build
 cd ..
 go run ./cmd/ldifgenerator-ui -static frontend/dist
 ```
 
-## Concurrent ldapadd
+По умолчанию backend слушает:
 
-`ldapbulkadd` splits a generated LDIF into temporary chunks and imports them with `ldapadd` in dependency-friendly phases: containers first, regular entries second, groups with `member` values last. Regular entry chunks run concurrently; group chunks run serially by default so nested groups keep generation order.
-
-```bash
-go run ./cmd/ldapbulkadd -file generated.ldif -jobs 8 -chunk-records 5000 -- \
-  -x -H ldap://localhost:389 -D cn=admin,dc=example,dc=com -w secret -c
+```text
+http://127.0.0.1:8080
 ```
 
-Use `-group-jobs` only when group records are independent enough for parallel adds in your server setup.
+## Проверить схему
 
-To only prepare phased LDIF chunks:
+Посмотреть, сколько `attributeTypes` и `objectClasses` распарсилось:
 
 ```bash
-go run ./cmd/ldapbulkadd -file generated.ldif -split-only -workdir ./chunks
+go run ./cmd/schemaaudit /path/to/schema-dir
 ```
 
-## Test
+Можно передать несколько путей:
+
+```bash
+go run ./cmd/schemaaudit /path/to/core.ldif /path/to/custom.ldif
+```
+
+## Загрузка в LDAP
+
+Обычный импорт через `ldapadd`:
+
+```bash
+ldapadd \
+  -x \
+  -H ldap://localhost:389 \
+  -D "cn=admin,dc=example,dc=com" \
+  -w secret \
+  -c \
+  -f generated.ldif
+```
+
+Конкурентный импорт через `ldapbulkadd`:
+
+```bash
+go run ./cmd/ldapbulkadd \
+  -file generated.ldif \
+  -jobs 8 \
+  -chunk-records 5000 \
+  -- \
+  -x \
+  -H ldap://localhost:389 \
+  -D "cn=admin,dc=example,dc=com" \
+  -w secret \
+  -c
+```
+
+`ldapbulkadd` делит LDIF на фазы:
+
+- сначала containers/OU;
+- потом обычные записи;
+- потом groups с `member`.
+
+Для nested groups лучше оставить:
+
+```bash
+-group-jobs 1
+```
+
+## Только разбить LDIF на чанки
+
+```bash
+go run ./cmd/ldapbulkadd \
+  -file generated.ldif \
+  -split-only \
+  -workdir ./chunks \
+  -chunk-records 5000
+```
+
+## Тесты
 
 ```bash
 go test ./...
 ```
 
-## Current MVP
+Frontend build:
 
-- Reads one or more schema LDIF files.
-- Parses `attributeTypes` and `objectClasses`, including aliases like `NAME ( 'cn' 'commonName' )`.
-- Supports folded LDIF schema values.
-- Resolves inherited `MUST`/`MAY` attributes through `SUP`.
-- Generates users, privileged users, groups, computers, service accounts and OU containers.
-- Writes LDIF streaming to disk.
-- Uses `privUser` for privileged users and `serviceUser` for service accounts by default.
-- Generates group `member`, user `memberOf`, nested groups and manager links.
-- Supports `relationships.allUsersGroupCount` for adding all regular and privileged users to the first N generated groups.
-- Generates fallback values from LDAP attribute syntax OIDs where possible, including Numeric String, Postal Address, DN, Boolean, Integer, Generalized Time, Telephone Number, IA5/Directory String and common binary syntaxes.
-- Supports deterministic seed, batch progress, cancellation and a generation report.
-- Validates required/allowed attributes in strict mode.
+```bash
+cd frontend
+npm install
+npm run build
+```
 
-## Notes
+## Важные детали
 
-Schema files, generated LDIF files, and local test configs may contain environment-specific data and are intentionally not checked in. Real output is produced by the generator and may contain 100k or 1M+ entries without keeping all records in memory.
+- `userPassword` не генерируется.
+- `NO-USER-MODIFICATION` атрибуты не генерируются.
+- Атрибуты с неподдерживаемыми `SYNTAX`, `EQUALITY`, `ORDERING`, `SUBSTR` отключаются через `generator.DefaultAttributeSupportPolicy()`.
+- Для включения отдельных конструкций в коде используйте `generator.NewWithAttributeSupportPolicy`.
+- LDIF пишется потоково через buffered writer, поэтому подходит для 100k, 1M+ записей.

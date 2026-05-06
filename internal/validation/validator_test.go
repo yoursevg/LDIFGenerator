@@ -50,3 +50,29 @@ objectClasses: ( 1.2.3.4 NAME 'exampleUser' SUP top STRUCTURAL MUST ( cn $ name 
 		t.Fatal("expected NO-USER-MODIFICATION attribute to be rejected")
 	}
 }
+
+func TestValidatorRequiresDisabledRequiredAttributes(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(`
+attributeTypes: ( 2.5.4.0 NAME 'objectClass' )
+attributeTypes: ( 2.5.4.3 NAME 'cn' )
+attributeTypes: ( 1.2.3.5 NAME 'unsupportedAttr' )
+objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
+objectClasses: ( 1.2.3.4 NAME 'exampleUser' SUP top STRUCTURAL MUST ( cn $ unsupportedAttr ) )
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter := func(attr schema.AttributeType) bool {
+		return attr.PrimaryName() != "unsupportedAttr"
+	}
+	rec := ldif.NewRecord("cn=user,dc=example,dc=com")
+	rec.Add("objectClass", "top", "exampleUser")
+	rec.Add("cn", "user")
+	if err := NewWithAttributeFilter(s, filter).ValidateRecord(rec, []string{"exampleUser"}, true); err == nil {
+		t.Fatal("expected disabled MUST attribute to still be required")
+	}
+	rec.Add("unsupportedAttr", "value")
+	if err := NewWithAttributeFilter(s, filter).ValidateRecord(rec, []string{"exampleUser"}, true); err == nil {
+		t.Fatal("expected disabled attribute to be rejected")
+	}
+}

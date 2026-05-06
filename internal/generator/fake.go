@@ -1,9 +1,14 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"strings"
 	"time"
 
@@ -88,7 +93,7 @@ func (r *FakeRegistry) Generate(ctx context.Context, attr schema.AttributeType, 
 
 func uuidGenerator() AttributeGenerator {
 	return generatorFunc(func(_ context.Context, _ schema.AttributeType, e EntryContext) ([]string, error) {
-		return []string{fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", e.Rand.Uint32(), e.Rand.Uint32()&0xffff, e.Rand.Uint32()&0xffff, e.Rand.Uint32()&0xffff, e.Rand.Uint64()&0xffffffffffff)}, nil
+		return []string{uuidString(e)}, nil
 	})
 }
 
@@ -140,8 +145,10 @@ func valueByName(name string, e EntryContext) (string, bool) {
 		return streetAddress(e), true
 	case name == "postalcode" || name == "zipcode":
 		return fmt.Sprintf("%05d", 10000+e.Rand.Intn(90000)), true
-	case name == "c" || strings.Contains(name, "country"):
+	case name == "c":
 		return "US", true
+	case name == "countryname" || name == "friendlycountryname":
+		return "United States", true
 	case name == "l" || name == "localityname" || strings.Contains(name, "city"):
 		return cityName(e), true
 	case name == "st" || strings.Contains(name, "state"):
@@ -162,37 +169,69 @@ func valueByName(name string, e EntryContext) (string, bool) {
 
 func valueBySyntax(attr schema.AttributeType, e EntryContext) (string, bool) {
 	switch syntaxOID(attr.Syntax) {
+	case "1.3.6.1.1.16.1":
+		return uuidString(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.3":
+		return attributeTypeDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.6":
+		return bitString(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.7":
 		if e.Rand.Intn(2) == 0 {
 			return "FALSE", true
 		}
 		return "TRUE", true
+	case "1.3.6.1.4.1.1466.115.121.1.11":
+		return "US", true
 	case "1.3.6.1.4.1.1466.115.121.1.12", "2.5.5.1":
 		return e.DN, true
+	case "1.3.6.1.4.1.1466.115.121.1.14":
+		return deliveryMethod(), true
+	case "1.3.6.1.4.1.1466.115.121.1.15", "2.5.5.12":
+		return directoryString(attr, e), true
+	case "1.3.6.1.4.1.1466.115.121.1.16":
+		return ditContentRuleDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.17":
+		return ditStructureRuleDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.22":
+		return facsimileTelephoneNumber(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.24":
 		return generalizedTime(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.26", "1.3.6.1.4.1.1466.115.121.1.44", "2.5.5.5":
+		return ia5String(attr, e), true
 	case "1.3.6.1.4.1.1466.115.121.1.27", "2.5.5.9", "2.5.5.16":
 		return fmt.Sprintf("%d", e.Rand.Intn(1000000)), true
+	case "1.3.6.1.4.1.1466.115.121.1.28":
+		return jpegImage(), true
+	case "1.3.6.1.4.1.1466.115.121.1.30":
+		return matchingRuleDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.31":
+		return matchingRuleUseDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.34":
+		return nameAndOptionalUID(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.35":
+		return nameFormDescription(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.36":
 		return numericString(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.37":
+		return objectClassDescription(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.38":
+		return oidValue(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.41":
 		return postalAddress(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.50":
 		return telephoneNumber(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.51":
+		return teletexTerminalIdentifier(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.52":
+		return telexNumber(e), true
 	case "1.3.6.1.4.1.1466.115.121.1.53":
 		return utcTime(e), true
-	case "1.3.6.1.4.1.1466.115.121.1.11":
-		return "US", true
-	case "1.3.6.1.4.1.1466.115.121.1.6":
-		return "'10101010'B", true
-	case "1.3.6.1.4.1.1466.115.121.1.38":
-		return fmt.Sprintf("1.3.6.1.4.1.55555.%d", e.Index+1), true
-	case "1.3.6.1.4.1.1466.115.121.1.40", "1.3.6.1.4.1.1466.115.121.1.4", "1.3.6.1.4.1.1466.115.121.1.5", "1.3.6.1.4.1.1466.115.121.1.8", "1.3.6.1.4.1.1466.115.121.1.9", "1.3.6.1.4.1.1466.115.121.1.10", "1.3.6.1.4.1.1466.115.121.1.28":
+	case "1.3.6.1.4.1.1466.115.121.1.54":
+		return ldapSyntaxDescription(e), true
+	case "1.3.6.1.4.1.4203.1.1.2":
+		return authPassword(e), true
+	case "1.3.6.1.4.1.1466.115.121.1.40", "1.3.6.1.4.1.1466.115.121.1.4", "1.3.6.1.4.1.1466.115.121.1.5", "1.3.6.1.4.1.1466.115.121.1.8", "1.3.6.1.4.1.1466.115.121.1.9", "1.3.6.1.4.1.1466.115.121.1.10":
 		return binaryValue(e, 16), true
-	case "1.3.6.1.4.1.1466.115.121.1.26", "1.3.6.1.4.1.1466.115.121.1.44", "2.5.5.5":
-		return ia5String(attr, e), true
-	case "1.3.6.1.4.1.1466.115.121.1.15", "2.5.5.12":
-		return directoryString(attr, e), true
 	}
 	if isNumericString(attr) {
 		return numericString(e), true
@@ -233,6 +272,10 @@ func numericString(e EntryContext) string {
 	return fmt.Sprintf("%03d %03d %04d", e.Rand.Intn(1000), e.Rand.Intn(1000), e.Rand.Intn(10000))
 }
 
+func bitString(e EntryContext) string {
+	return fmt.Sprintf("'%08b'B", byte(e.Rand.Intn(256)))
+}
+
 func telephoneNumber(e EntryContext) string {
 	return fmt.Sprintf("+1 555 %03d %04d", e.Rand.Intn(900)+100, e.Rand.Intn(10000))
 }
@@ -249,6 +292,10 @@ func utcTime(e EntryContext) string {
 
 func postalAddress(e EntryContext) string {
 	return fmt.Sprintf("%d %s St$%s, CA %05d$USA", 100+e.Rand.Intn(9900), fakeSurnames[e.Index%len(fakeSurnames)], cityName(e), 10000+e.Rand.Intn(90000))
+}
+
+func deliveryMethod() string {
+	return "telephone $ physical"
 }
 
 func streetAddress(e EntryContext) string {
@@ -270,6 +317,16 @@ func binaryValue(e EntryContext, size int) string {
 	return "{base64}" + base64.StdEncoding.EncodeToString(buf)
 }
 
+func jpegImage() string {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 80, G: 140, B: 220, A: 255})
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80}); err != nil {
+		return "#ffd8ffd9"
+	}
+	return "#" + hex.EncodeToString(buf.Bytes())
+}
+
 func ia5String(attr schema.AttributeType, e EntryContext) string {
 	name := strings.ToLower(attr.PrimaryName())
 	switch {
@@ -280,6 +337,70 @@ func ia5String(attr schema.AttributeType, e EntryContext) string {
 	default:
 		return fmt.Sprintf("%s-%d-%04d", attr.PrimaryName(), e.Index+1, e.Rand.Intn(10000))
 	}
+}
+
+func oidValue(e EntryContext) string {
+	return fmt.Sprintf("1.3.6.1.4.1.55555.%d", e.Index+1)
+}
+
+func descrValue(e EntryContext, prefix string) string {
+	return fmt.Sprintf("%s%d", prefix, e.Index+1)
+}
+
+func attributeTypeDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )", oidValue(e), descrValue(e, "generatedAttr"))
+}
+
+func objectClassDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' SUP top STRUCTURAL MUST cn )", oidValue(e), descrValue(e, "generatedClass"))
+}
+
+func matchingRuleDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )", oidValue(e), descrValue(e, "generatedMatch"))
+}
+
+func matchingRuleUseDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' APPLIES cn )", oidValue(e), descrValue(e, "generatedMatchUse"))
+}
+
+func nameFormDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' OC top MUST cn )", oidValue(e), descrValue(e, "generatedNameForm"))
+}
+
+func ditStructureRuleDescription(e EntryContext) string {
+	return fmt.Sprintf("( %d NAME '%s' FORM %s )", e.Index+1, descrValue(e, "generatedRule"), oidValue(e))
+}
+
+func ditContentRuleDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s NAME '%s' AUX top MAY cn )", oidValue(e), descrValue(e, "generatedContentRule"))
+}
+
+func ldapSyntaxDescription(e EntryContext) string {
+	return fmt.Sprintf("( %s DESC 'Generated syntax' )", oidValue(e))
+}
+
+func nameAndOptionalUID(e EntryContext) string {
+	return e.DN + "#" + bitString(e)
+}
+
+func facsimileTelephoneNumber(e EntryContext) string {
+	return telephoneNumber(e) + "$fineResolution"
+}
+
+func telexNumber(e EntryContext) string {
+	return fmt.Sprintf("%06d$US$ANSWER", e.Rand.Intn(1000000))
+}
+
+func teletexTerminalIdentifier(e EntryContext) string {
+	return fmt.Sprintf("terminal%d$graphic:ascii", e.Index+1)
+}
+
+func authPassword(e EntryContext) string {
+	return fmt.Sprintf("SHA1$%08x$%08x", e.Rand.Uint32(), e.Rand.Uint32())
+}
+
+func uuidString(e EntryContext) string {
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", e.Rand.Uint32(), e.Rand.Uint32()&0xffff, e.Rand.Uint32()&0xffff, e.Rand.Uint32()&0xffff, e.Rand.Uint64()&0xffffffffffff)
 }
 
 func directoryString(attr schema.AttributeType, e EntryContext) string {

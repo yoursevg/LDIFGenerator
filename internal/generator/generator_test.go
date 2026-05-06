@@ -302,7 +302,8 @@ func TestGeneratorUsesNumericStringSyntax(t *testing.T) {
 	cfg.Tree.ComputerPercent = 0
 	cfg.Tree.ServicePercent = 0
 	cfg.Tree.PrivilegedPercent = 0
-	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+	policy := DefaultAttributeSupportPolicy().EnableSubstrs("numericStringSubstringsMatch")
+	if _, err := NewWithAttributeSupportPolicy(s, policy).Generate(context.Background(), cfg, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(out.Name())
@@ -340,7 +341,8 @@ func TestGeneratorUsesPostalAddressSyntax(t *testing.T) {
 	cfg.Tree.ComputerPercent = 0
 	cfg.Tree.ServicePercent = 0
 	cfg.Tree.PrivilegedPercent = 0
-	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+	policy := DefaultAttributeSupportPolicy().EnableSubstrs("caseIgnoreListSubstringsMatch")
+	if _, err := NewWithAttributeSupportPolicy(s, policy).Generate(context.Background(), cfg, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(out.Name())
@@ -359,6 +361,249 @@ func TestGeneratorUsesPostalAddressSyntax(t *testing.T) {
 	}
 }
 
+func TestDefaultValuesFollowLDAPSyntaxes(t *testing.T) {
+	cases := []struct {
+		name    string
+		syntax  string
+		pattern string
+	}{
+		{name: "attrType", syntax: "1.3.6.1.4.1.1466.115.121.1.3", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedAttr\d+' SYNTAX 1\.3\.6\.1\.4\.1\.1466\.115\.121\.1\.15 \)$`},
+		{name: "bit", syntax: "1.3.6.1.4.1.1466.115.121.1.6", pattern: `^'[01]{8}'B$`},
+		{name: "bool", syntax: "1.3.6.1.4.1.1466.115.121.1.7", pattern: `^(TRUE|FALSE)$`},
+		{name: "country", syntax: "1.3.6.1.4.1.1466.115.121.1.11", pattern: `^US$`},
+		{name: "countryCode", syntax: "1.3.6.1.4.1.1466.115.121.1.27", pattern: `^\d+$`},
+		{name: "dnValue", syntax: "1.3.6.1.4.1.1466.115.121.1.12", pattern: `^uid=user0000001,dc=example,dc=com$`},
+		{name: "delivery", syntax: "1.3.6.1.4.1.1466.115.121.1.14", pattern: `^telephone \$ physical$`},
+		{name: "dir", syntax: "1.3.6.1.4.1.1466.115.121.1.15", pattern: `^dir 1 \d{4}$`},
+		{name: "ditContent", syntax: "1.3.6.1.4.1.1466.115.121.1.16", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedContentRule\d+' AUX top MAY cn \)$`},
+		{name: "ditStructure", syntax: "1.3.6.1.4.1.1466.115.121.1.17", pattern: `^\( 1 NAME 'generatedRule1' FORM 1\.3\.6\.1\.4\.1\.55555\.1 \)$`},
+		{name: "fax", syntax: "1.3.6.1.4.1.1466.115.121.1.22", pattern: `^\+1 555 [0-9]{3} [0-9]{4}\$fineResolution$`},
+		{name: "time", syntax: "1.3.6.1.4.1.1466.115.121.1.24", pattern: `^\d{14}Z$`},
+		{name: "ia5", syntax: "1.3.6.1.4.1.1466.115.121.1.26", pattern: `^ia5-1-\d{4}$`},
+		{name: "int", syntax: "1.3.6.1.4.1.1466.115.121.1.27", pattern: `^\d+$`},
+		{name: "jpeg", syntax: "1.3.6.1.4.1.1466.115.121.1.28", pattern: `^#ffd8[0-9a-f]+ffd9$`},
+		{name: "matchRule", syntax: "1.3.6.1.4.1.1466.115.121.1.30", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedMatch\d+' SYNTAX 1\.3\.6\.1\.4\.1\.1466\.115\.121\.1\.15 \)$`},
+		{name: "matchUse", syntax: "1.3.6.1.4.1.1466.115.121.1.31", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedMatchUse\d+' APPLIES cn \)$`},
+		{name: "nameUID", syntax: "1.3.6.1.4.1.1466.115.121.1.34", pattern: `^uid=user0000001,dc=example,dc=com#'[01]{8}'B$`},
+		{name: "nameForm", syntax: "1.3.6.1.4.1.1466.115.121.1.35", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedNameForm\d+' OC top MUST cn \)$`},
+		{name: "numeric", syntax: "1.3.6.1.4.1.1466.115.121.1.36", pattern: `^[0-9 ]+$`},
+		{name: "objectClass", syntax: "1.3.6.1.4.1.1466.115.121.1.37", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ NAME 'generatedClass\d+' SUP top STRUCTURAL MUST cn \)$`},
+		{name: "oid", syntax: "1.3.6.1.4.1.1466.115.121.1.38", pattern: `^1\.3\.6\.1\.4\.1\.55555\.\d+$`},
+		{name: "octets", syntax: "1.3.6.1.4.1.1466.115.121.1.40", pattern: `^\{base64\}[A-Za-z0-9+/]+=*$`},
+		{name: "postal", syntax: "1.3.6.1.4.1.1466.115.121.1.41", pattern: `^[^$]+\$[^$]+\$USA$`},
+		{name: "printable", syntax: "1.3.6.1.4.1.1466.115.121.1.44", pattern: `^printable-1-\d{4}$`},
+		{name: "phone", syntax: "1.3.6.1.4.1.1466.115.121.1.50", pattern: `^\+1 555 [0-9]{3} [0-9]{4}$`},
+		{name: "teletex", syntax: "1.3.6.1.4.1.1466.115.121.1.51", pattern: `^terminal1\$graphic:ascii$`},
+		{name: "telex", syntax: "1.3.6.1.4.1.1466.115.121.1.52", pattern: `^\d{6}\$US\$ANSWER$`},
+		{name: "utc", syntax: "1.3.6.1.4.1.1466.115.121.1.53", pattern: `^\d{12}Z$`},
+		{name: "ldapSyntax", syntax: "1.3.6.1.4.1.1466.115.121.1.54", pattern: `^\( 1\.3\.6\.1\.4\.1\.55555\.\d+ DESC 'Generated syntax' \)$`},
+		{name: "uuid", syntax: "1.3.6.1.1.16.1", pattern: `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := EntryContext{
+				Index:  0,
+				Type:   EntryTypeUser,
+				DN:     "uid=user0000001,dc=example,dc=com",
+				UID:    "user0000001",
+				Rand:   rand.New(rand.NewSource(1)),
+				BaseDN: "dc=example,dc=com",
+			}
+			values := defaultValue(schema.AttributeType{Names: []string{tc.name}, Syntax: tc.syntax}, entry)
+			if len(values) != 1 {
+				t.Fatalf("values = %#v, want one value", values)
+			}
+			if !regexp.MustCompile(tc.pattern).MatchString(values[0]) {
+				t.Fatalf("value for syntax %s = %q, want pattern %s", tc.syntax, values[0], tc.pattern)
+			}
+		})
+	}
+}
+
+func TestGeneratorSkipsUnsupportedAttributeConstructions(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 20
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{
+		"authpassword":            true,
+		"homepostaladdress":       true,
+		"internationalisdnnumber": true,
+		"testattroid":             true,
+		"telephonenumber":         true,
+		"usersmimecertificate":    true,
+		"x121address":             true,
+	}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, attr := range []string{"authPassword", "homePostalAddress", "internationalISDNNumber", "testAttrOID", "telephoneNumber", "userSMIMECertificate", "x121Address"} {
+		if strings.Contains(text, "\n"+attr+":") || strings.Contains(text, "\n"+attr+"::") {
+			t.Fatalf("generated LDIF contains disabled attribute %s:\n%s", attr, text)
+		}
+	}
+}
+
+func TestGeneratorCanEnableUnsupportedConstructionsInCode(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 20
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{"usersmimecertificate": true}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	policy := DefaultAttributeSupportPolicy().EnableSyntaxes("1.3.6.1.4.1.1466.115.121.1.5")
+	if _, err := NewWithAttributeSupportPolicy(s, policy).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\nuserSMIMECertificate:: ") {
+		t.Fatalf("generated LDIF missing enabled userSMIMECertificate:\n%s", string(data))
+	}
+}
+
+func TestGeneratorUsesInheritedDNSyntax(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 20
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 100
+	cfg.SelectedAttributes = map[string]bool{"seealso": true}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`(?m)^seeAlso: uid=user\d{7},ou=Users,dc=example,dc=com$`)
+	if !re.Match(data) {
+		t.Fatalf("generated LDIF missing DN-valued seeAlso:\n%s", string(data))
+	}
+}
+
+func TestGeneratorAlwaysWritesMustAttributes(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 10
+	cfg.OutputPath = out.Name()
+	cfg.OptionalFillPercent = 0
+	cfg.SelectedAttributes = map[string]bool{"description": true}
+	cfg.ObjectClasses[EntryTypeUser] = []string{"mustRichUser"}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	if _, err := New(s).Generate(context.Background(), cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, attr := range []string{"cn", "sn", "uid", "mail", "seeAlso"} {
+		if !strings.Contains(text, "\n"+attr+": ") {
+			t.Fatalf("generated LDIF missing MUST attribute %s:\n%s", attr, text)
+		}
+	}
+}
+
+func TestGeneratorErrorsWhenMustAttributeCannotBeGenerated(t *testing.T) {
+	s, err := schema.Parse(strings.NewReader(testSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := os.CreateTemp(t.TempDir(), "generated-*.ldif")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out.Close()
+	cfg := DefaultConfig()
+	cfg.Count = 10
+	cfg.OutputPath = out.Name()
+	cfg.ObjectClasses[EntryTypeUser] = []string{"mustUnsupportedUser"}
+	cfg.Tree.GroupPercent = 0
+	cfg.Tree.ComputerPercent = 0
+	cfg.Tree.ServicePercent = 0
+	cfg.Tree.PrivilegedPercent = 0
+	_, err = New(s).Generate(context.Background(), cfg, nil)
+	if err == nil || !strings.Contains(err.Error(), `required attribute "telephoneNumber" is disabled`) {
+		t.Fatalf("Generate error = %v, want required disabled attribute error", err)
+	}
+}
+
+func TestAttributeSupportPolicyCanToggleConstructions(t *testing.T) {
+	attr := schema.AttributeType{
+		Names:  []string{"userSMIMECertificate"},
+		Syntax: "1.3.6.1.4.1.1466.115.121.1.5",
+	}
+	policy := DefaultAttributeSupportPolicy()
+	if policy.Allows(attr) {
+		t.Fatal("default policy should disable unsupported binary syntax")
+	}
+	policy = policy.EnableSyntaxes("1.3.6.1.4.1.1466.115.121.1.5")
+	if !policy.Allows(attr) {
+		t.Fatal("enabled syntax should be allowed")
+	}
+	policy = policy.DisableSyntaxes("1.3.6.1.4.1.1466.115.121.1.5")
+	if policy.Allows(attr) {
+		t.Fatal("disabled syntax should be rejected again")
+	}
+}
+
 const testSchema = `
 attributeTypes: ( 2.5.4.0 NAME 'objectClass' )
 attributeTypes: ( 2.5.4.3 NAME 'cn' )
@@ -371,13 +616,22 @@ attributeTypes: ( 2.5.4.13 NAME 'description' )
 attributeTypes: ( 2.5.4.11 NAME 'ou' )
 attributeTypes: ( 2.5.4.31 NAME 'member' )
 attributeTypes: ( 2.5.4.35 NAME 'userPassword' )
+attributeTypes: ( 2.5.4.49 NAME 'distinguishedName' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+attributeTypes: ( 2.5.4.34 NAME 'seeAlso' SUP distinguishedName )
+attributeTypes: ( 2.5.4.20 NAME 'telephoneNumber' SUBSTR telephoneNumberSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.50 )
 attributeTypes: ( 2.5.4.24 NAME 'x121Address' EQUALITY numericStringMatch SUBSTR numericStringSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.36 )
-attributeTypes: ( 0.9.2342.19200300.100.1.39 NAME 'homePostalAddress' SYNTAX 1.3.6.1.4.1.1466.115.121.1.41 )
+attributeTypes: ( 2.5.4.25 NAME 'internationalISDNNumber' SUBSTR numericStringSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.36 )
+attributeTypes: ( 0.9.2342.19200300.100.1.39 NAME 'homePostalAddress' SUBSTR caseIgnoreListSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.41 )
+attributeTypes: ( 1.3.6.1.4.1.99999.1.1.1 NAME 'testAttrOID' ORDERING objectIdentifierOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.38 )
+attributeTypes: ( 2.16.840.1.113730.3.1.40 NAME 'userSMIMECertificate' SYNTAX 1.3.6.1.4.1.1466.115.121.1.5 )
+attributeTypes: ( 1.3.6.1.4.1.4203.1.3.4 NAME 'authPassword' EQUALITY 1.3.6.1.4.1.4203.1.2.2 SYNTAX 1.3.6.1.4.1.4203.1.1.2 )
 attributeTypes: ( 1.2.840.113556.1.2.102 NAME 'memberOf' NO-USER-MODIFICATION )
 attributeTypes: ( 0.9.2342.19200300.100.1.10 NAME 'manager' SINGLE-VALUE )
 objectClasses: ( 2.5.6.0 NAME 'top' ABSTRACT MUST objectClass )
 objectClasses: ( 2.5.6.5 NAME 'organizationalUnit' SUP top STRUCTURAL MUST ou )
-objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ x121Address $ homePostalAddress $ name ) )
+objectClasses: ( 2.16.840.1.113730.3.2.2 NAME 'inetOrgPerson' SUP top STRUCTURAL MUST ( cn $ sn ) MAY ( uid $ mail $ givenName $ description $ memberOf $ manager $ userPassword $ seeAlso $ telephoneNumber $ x121Address $ internationalISDNNumber $ homePostalAddress $ testAttrOID $ userSMIMECertificate $ authPassword $ name ) )
+objectClasses: ( 1.2.3.10 NAME 'mustRichUser' SUP top STRUCTURAL MUST ( cn $ sn $ uid $ mail $ seeAlso ) MAY description )
+objectClasses: ( 1.2.3.11 NAME 'mustUnsupportedUser' SUP top STRUCTURAL MUST ( cn $ sn $ telephoneNumber ) )
 objectClasses: ( 1.2.643.4.38.2.2.1 NAME 'privUser' SUP inetOrgPerson STRUCTURAL MAY description )
 objectClasses: ( 2.5.6.9 NAME 'groupOfNames' SUP top STRUCTURAL MUST cn MAY ( member $ description ) )
 objectClasses: ( 2.5.6.14 NAME 'device' SUP top STRUCTURAL MUST cn MAY description )

@@ -97,6 +97,36 @@ attributeTypes: ( 2.5.4.42
 	}
 }
 
+func TestResolveAttributeTypeInheritance(t *testing.T) {
+	input := `
+attributeTypes: ( 2.5.4.41 NAME 'name' SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 NO-USER-MODIFICATION )
+attributeTypes: ( 2.5.4.3 NAME 'cn' SUP name )
+attributeTypes: ( 2.5.4.49 NAME 'distinguishedName' SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+attributeTypes: ( 2.5.4.34 NAME 'seeAlso' SUP distinguishedName )
+`
+	s, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attr, ok := s.ResolveAttributeType("seeAlso")
+	if !ok {
+		t.Fatal("seeAlso was not indexed")
+	}
+	if attr.Syntax != "1.3.6.1.4.1.1466.115.121.1.12" {
+		t.Fatalf("seeAlso syntax = %q, want inherited DN syntax", attr.Syntax)
+	}
+	attr, ok = s.ResolveAttributeType("cn")
+	if !ok {
+		t.Fatal("cn was not indexed")
+	}
+	if attr.Syntax != "1.3.6.1.4.1.1466.115.121.1.15" {
+		t.Fatalf("cn syntax = %q, want inherited Directory String syntax", attr.Syntax)
+	}
+	if attr.NoUserMod {
+		t.Fatal("cn must not inherit NO-USER-MODIFICATION from name")
+	}
+}
+
 func assertContains(t *testing.T, got []string, want string) {
 	t.Helper()
 	for _, v := range got {

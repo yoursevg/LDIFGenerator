@@ -1,6 +1,6 @@
 {
   "baseDN": "dc=example,dc=com",
-  "count": 100000,
+  "count": 100,
   "seed": 42,
   "batchSize": 1000,
   "outputPath": "generated.ldif",
@@ -8,11 +8,21 @@
   "optionalFillPercent": 45,
   "selectedAttributes": {},
   "objectClasses": {
-    "user": ["inetOrgPerson"],
-    "privilegedUser": ["privUser"],
-    "group": ["groupOfNames"],
-    "computer": ["computer"],
-    "serviceAccount": ["serviceUser"]
+    "computer": [
+      "device"
+    ],
+    "group": [
+      "groupOfNames"
+    ],
+    "privilegedUser": [
+      "privUser"
+    ],
+    "serviceAccount": [
+      "serviceUser"
+    ],
+    "user": [
+      "inetOrgPerson"
+    ]
   },
   "tree": {
     "mode": "hierarchical",

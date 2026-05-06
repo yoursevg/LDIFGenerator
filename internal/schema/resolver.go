@@ -22,6 +22,51 @@ func (s *Schema) ResolveObjectClasses(names []string) (ResolvedObjectClass, erro
 	return out, nil
 }
 
+func (s *Schema) ResolveAttributeType(name string) (AttributeType, bool) {
+	attr, ok := s.Attribute(name)
+	if !ok {
+		return AttributeType{}, false
+	}
+	return s.resolveAttributeType(attr, map[string]bool{}), true
+}
+
+func (s *Schema) resolveAttributeType(attr AttributeType, seen map[string]bool) AttributeType {
+	key := NormalizeName(attr.PrimaryName())
+	if key == "" || seen[key] || attr.SUP == "" {
+		return attr
+	}
+	seen[key] = true
+	parent, ok := s.Attribute(attr.SUP)
+	if !ok {
+		return attr
+	}
+	parent = s.resolveAttributeType(parent, seen)
+	return mergeAttributeType(parent, attr)
+}
+
+func mergeAttributeType(parent, child AttributeType) AttributeType {
+	out := child
+	if out.Equality == "" {
+		out.Equality = parent.Equality
+	}
+	if out.Ordering == "" {
+		out.Ordering = parent.Ordering
+	}
+	if out.Substr == "" {
+		out.Substr = parent.Substr
+	}
+	if out.Syntax == "" {
+		out.Syntax = parent.Syntax
+	}
+	if !out.SingleValue {
+		out.SingleValue = parent.SingleValue
+	}
+	if out.Usage == "" {
+		out.Usage = parent.Usage
+	}
+	return out
+}
+
 func (s *Schema) resolveObjectClass(name string, seenOC, seenMust, seenMay map[string]bool, out *ResolvedObjectClass) error {
 	oc, ok := s.ObjectClass(name)
 	if !ok {
